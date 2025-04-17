@@ -1,6 +1,7 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import networkx as nx
+import graphviz
 import io
 from collections import defaultdict
 
@@ -388,112 +389,69 @@ class SLRParser:
             df_goto.at[state, symbol] = str(goto_state)
         
         return df_action, df_goto
-
+        
+    def visualize_grammar(self):
+        """Generate a visual representation of the grammar using graphviz."""
+        dot = graphviz.Digraph(comment='Grammar Visualization')
+        dot.attr(rankdir='LR')
+        
+        # Add nodes for non-terminals
+        for nt in self.non_terminals:
+            dot.node(nt, shape="circle")
+        
+        # Add edges for productions
+        for head, productions in self.grammar.items():
+            for i, prod in enumerate(productions):
+                # Create a unique node ID for this production
+                node_id = f"{head}_prod_{i}"
+                
+                # Create label for the production
+                prod_label = ' '.join(prod) if prod else 'ε'
+                
+                # Add the production node
+                dot.node(node_id, label=prod_label, shape="box")
+                
+                # Add edge from non-terminal to production
+                dot.edge(head, node_id)
+        
+        return dot
+        
     def visualize_dfa(self):
-        plt.figure(figsize=(24, 20))
+        """Generate a visual representation of the DFA using graphviz."""
+        dot = graphviz.Digraph(comment='DFA for SLR Parser')
+        dot.attr(rankdir='LR')
         
-        G = nx.DiGraph()
-        
-        # Add nodes for each state with detailed information
+        # Add nodes for each state
         for i, state in enumerate(self.states):
             # Group items by non-terminal for better organization
-            items_by_nt = {}
-            for A, prod, dot in sorted(state, key=lambda x: (x[0], ' '.join(x[1]))):
-                if A not in items_by_nt:
-                    items_by_nt[A] = []
+            items_by_nt = defaultdict(list)
+            for A, prod, dot_pos in sorted(state, key=lambda x: (x[0], ' '.join(x[1]))):
                 # Format production with bullet and different colors
-                prod_str = ' '.join(prod[:dot]) + '•' + ' '.join(prod[dot:])
+                prod_str = ' '.join(prod[:dot_pos]) + '•' + ' '.join(prod[dot_pos:])
                 items_by_nt[A].append(prod_str)
             
-            # Create a formatted string with grouped items
-            items_str = [f"State {i}"]
-            items_str.append("─" * 20)  # Separator line using a simple character
+            # Create node label
+            label = f"State {i}\\n"
+            label += "─" * 20 + "\\n"  # Separator line
             for nt in sorted(items_by_nt.keys()):
-                prods = items_by_nt[nt]
-                items_str.append(f"{nt} →")
-                for prod in prods:
-                    items_str.append(f"    {prod}")
+                label += f"{nt} →\\n"
+                for prod in sorted(items_by_nt[nt]):
+                    label += f"    {prod}\\n"
             
-            G.add_node(i, label='\n'.join(items_str))
+            dot.node(str(i), label, shape='rectangle')
         
-        # Add edges with detailed transition information
+        # Add edges for GOTO transitions
         for (state_num, symbol), next_state in self.goto_table.items():
-            G.add_edge(state_num, next_state, 
-                      label=f"GOTO on {symbol}",
-                      color='blue',
-                      style='solid')
+            dot.edge(str(state_num), str(next_state), 
+                     label=f"GOTO {symbol}",
+                     color='blue')
         
+        # Add edges for Shift actions
         for (state_num, symbol), action in self.action.items():
             if isinstance(action, str) and action.startswith('s'):
                 next_state = int(action[1:])
-                G.add_edge(state_num, next_state,
-                          label=f"Shift {symbol}",
-                          color='green',
-                          style='solid')
+                dot.edge(str(state_num), str(next_state),
+                         label=f"Shift {symbol}",
+                         color='green')
         
-        # Use a more spread out layout
-        pos = nx.spring_layout(G, k=3.0, iterations=50, seed=42)
-        
-        # Draw nodes with enhanced styling
-        nx.draw_networkx_nodes(G, pos,
-                             node_size=10000,
-                             node_color='lightblue',
-                             alpha=0.9,
-                             node_shape='s',
-                             linewidths=3,
-                             edgecolors='darkblue')
-        
-        # Draw edges with different colors for different types
-        edge_colors = [G.edges[edge].get('color', 'gray') for edge in G.edges()]
-        edge_styles = [G.edges[edge].get('style', 'solid') for edge in G.edges()]
-        
-        nx.draw_networkx_edges(G, pos,
-                             arrowsize=25,
-                             width=2.5,
-                             edge_color=edge_colors,
-                             style=edge_styles,
-                             arrowstyle='->',
-                             connectionstyle='arc3,rad=0.2')
-        
-        # Draw edge labels with enhanced styling
-        edge_labels = nx.get_edge_attributes(G, 'label')
-        nx.draw_networkx_edge_labels(G, pos,
-                                   edge_labels=edge_labels,
-                                   font_size=10,
-                                   font_weight='bold',
-                                   bbox=dict(facecolor='white',
-                                           alpha=0.9,
-                                           pad=0.5))
-        
-        # Draw node labels with enhanced styling
-        node_labels = nx.get_node_attributes(G, 'label')
-        nx.draw_networkx_labels(G, pos,
-                              labels=node_labels,
-                              font_size=9,
-                              font_weight='bold',
-                              bbox=dict(facecolor='white',
-                                      alpha=0.9,
-                                      pad=0.5))
-        
-        plt.title("Deterministic Finite Automaton (DFA) for SLR Parser\n"
-                 "Blue edges: GOTO transitions | Green edges: Shift actions",
-                 fontsize=20, fontweight='bold', pad=20)
-        
-        # Add a legend
-        legend_elements = [
-            plt.Line2D([0], [0], color='blue', label='GOTO Transition'),
-            plt.Line2D([0], [0], color='green', label='Shift Action'),
-        ]
-        plt.legend(handles=legend_elements, loc='upper right', fontsize=12)
-        
-        plt.margins(0.2)
-        plt.axis('off')
-        
-        # Save with high quality
-        buf = io.BytesIO()
-        plt.savefig(buf, format="png", dpi=300, bbox_inches='tight', 
-                   facecolor='white', edgecolor='none',
-                   pad_inches=0.8)
-        buf.seek(0)
-        plt.close()
-        return buf 
+        return dot 

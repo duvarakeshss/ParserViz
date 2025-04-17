@@ -122,9 +122,13 @@ F -> ( E ) | id | num""",
             return
 
         try:
+            st.header("Grammar Visualization")
+            grammar_graph = parser.visualize_grammar()
+            st.graphviz_chart(grammar_graph)
+            
             st.header("DFA for Grammar")
-            dfa_buf = parser.visualize_dfa()
-            st.image(dfa_buf, caption="DFA for SLR Parser")
+            dfa_graph = parser.visualize_dfa()
+            st.graphviz_chart(dfa_graph)
 
             st.header("SLR Parsing Tables")
             action_table, goto_table = parser.get_tables()
